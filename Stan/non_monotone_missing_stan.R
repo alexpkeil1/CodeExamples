@@ -99,9 +99,9 @@ data{
   int R[N];
 }
 transformed data{
-  int z[N];
-  for(i in 1:N)
-    z[i]=1;
+  vector[NR-1] ones;
+  for(i in 1:(NR-1))
+    ones[i] = 1.0;
 }
 parameters{
  real g0[NR-1];
@@ -113,13 +113,13 @@ model{
   g0 ~ normal(0,10);
   gamma ~ normal(0,10);
   { // local
-  matrix[N,NR] pmiss;
-  for(i in 1:N){
-     pmiss[i, 2] = inv_logit(g0[1] + gamma[1]*L[i,1] + gamma[2]*L[i,2]                   );
-     pmiss[i, 3] = inv_logit(g0[2] +                   gamma[3]*L[i,2]                   );
-     pmiss[i, 4] = inv_logit(g0[3] +                   gamma[4]*L[i,2] + gamma[5]*L[i,3] );
-     pmiss[i, 1] = 1-sum(pmiss[i, 2:4]); // complete cases
-     target += bernoulli_logit_lpmf(z[i] | logit(pmiss[i,R[i]]));
+    matrix[N,NR] pmiss;
+    pmiss[:, 2] = inv_logit( g0[1] + gamma[1]*L[:,1] + gamma[2]*L[:,2]                   );
+    pmiss[:, 3] = inv_logit( g0[2] +                   gamma[3]*L[:,2]                   );
+    pmiss[:, 4] = inv_logit( g0[3] +                   gamma[4]*L[:,2] + gamma[5]*L[:,3] );
+    pmiss[:, 1] = 1.0 - (pmiss[:, 2:4] * ones); // matrix trick to get row sums complete cases
+    for(i in 1:N){
+      target += log(pmiss[i, R[i]]);
     }
   } // end local
 }
