@@ -1,9 +1,17 @@
-# simulating multiplicative Berkson measurement error
-# updated 2/22 to fix bug in exposure updates
+######################################################################################################################
+# Author: Alex Keil
+# Program: metropolis_algorithm_logistic_reg.jl
+# Language: Julia v1.7
+# Date: Wednesday, February 16, 2022 at 11:03:12 AM
+# Project: Coding examples
+# Tasks: Simple example of using Metropolis algorithm for Bayesian fitting of logistic 
+#  regression model
+# Released under the GNU General Public License: http://www.gnu.org/copyleft/gpl.html
+######################################################################################################################
 
-#!julia -p 8
-using Random, StatsPlots, DataFrames, Distributions, GLM, StatsBase, LinearAlgebra
-plotly()
+
+using Random, DataFrames, Distributions, GLM, StatsBase, LinearAlgebra
+
 
 
 function expit(mu::T) where T
@@ -24,7 +32,7 @@ end
 function dgm2(N;linear=true,seed=1231)
   rng = Random.MersenneTwister(seed)
   z = rand(rng, Float64,N)
-  x = rand.(rng, LogNormal.(-0.5 .+ z, 0.3))
+  x = rand.(rng, LogNormal.(-0.5 .+ z, 0.3)) # distribution prone to outliers
   lpy = -1.0 .+ x + z
   y = rand.(rng, Bernoulli.(expit.(lpy)))
   z,x,y
@@ -39,7 +47,7 @@ function mydiag(X) where T
   end
 end
 
-function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=randn(3)*2, adapt=true, seed=sample([Int(i) for i in 1:1e8]))
+function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=randn(3)*2, adapt=true, keepwarmup=false, seed=sample([Int(i) for i in 1:1e8]))
   rng = Random.MersenneTwister(seed)
   n = size(y,1)
   p = size(X,2) 
@@ -52,7 +60,7 @@ function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=ran
   # proposal sds
   covB = Symmetric(Array(I,p,p)*bs)
   #storage
-  lp_store = Array{Float64, 1}(undef, iter)
+  lp_store = Array{Float64, 1}(undef, iter)             # proportional to log posterior
   beta_store = Array{Float64, 2}(undef, iter, p)
   beta_store[1,:]    = _beta
   #allocation
@@ -60,13 +68,13 @@ function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=ran
   muc = expit.(X * _beta)
   propB = zero(_beta)  
   _betac = zero(_beta)  
-  
+  adaptscale = sqrt(5.76/p)
   for j in 2:iter
     ############################
     # adaptation phase
     ############################
     if adapt && j < burnin && (j % 5)==0 && j > 100
-       covB .= Symmetric(sqrt(5.76/(p)) .* cov(beta_store[1:(j-1),:]))
+       covB .= Symmetric(adaptscale .* cov(beta_store[1:(j-1),:]))
     end
     ############################
     # proposal values
@@ -88,8 +96,10 @@ function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=ran
     # uniform prior
     #lpc  = sum(logpdf.(Bernoulli.(muc), y)) 
     #lpo  = sum(logpdf.(Bernoulli.(mu), y)) 
+    ## acceptance probability ##
     aB = min(1.0, exp(lpc-lpo))
     saB += aB 
+    # accept/reject
     if aB > rand(rng)
       lp_store[j] = lpc
       _beta[:] .= _betac
@@ -101,10 +111,12 @@ function mhlogit(y,X;iter=100, burnin=0, thin=1, printrat=true,bs=0.3,binits=ran
   if printrat
     println("Beta acceptance ratio ", saB/iter)
   end
+  startkeep = keepwarmup ? 1 : burnin+1
+  keepidx = range(startkeep, iter, step=thin)
   df = DataFrame(hcat([i for i in 1:iter], lp_store, beta_store), vcat(
        :iter, :logpost,[Symbol("b" * "_$i") for i in 0:(p-1)]))
   return (
-      df[range(burnin+1, iter, step=thin),:], 
+      df[keepidx,:], 
       (:B => saB/iter)
     )
 end
@@ -133,28 +145,55 @@ function summarymcmc(results::DataFrame)
            [:nm, :mean, :std, :median, :lower2_5, :upper97_5, :autocor_1, :autocor_5, :length])
 end
 
-
-#z,x,y = dgm(150, seed=sample([Int(i) for i in 1:1e8]))
-z,x,y = dgm2(150, seed=sample([Int(i) for i in 1:1e8])) # this highlights some difference in Bayes vs. ML
+# generate data
+#z,x,y = dgm(150, seed=1232) # simple example with binary exposure
+z,x,y = dgm2(150, seed=1232) # this highlights some difference in Bayes vs. ML
 X = hcat(ones(length(x)), x, z)
-println(sum(y)/length(y))
 
-mx = glm(@formula(y~x+z), DataFrame(x=x,y=y,z=z), Binomial())
-
-res, acc = mhlogit(y,X, iter=100000, burnin=10000, thin=10,bs=0.15,binits=zeros(size(X,2)));
+# fit models
+mx = glm(@formula(y~x+z), DataFrame(x=x,y=y,z=z), Binomial());
+res, acc = mhlogit(y,X, seed=1232, iter=100000, burnin=10000, thin=10,bs=0.15,binits=zeros(size(X,2)));
 reso = summarymcmc(res[:,2:end]);
 
-# Maximum likelihood
-println("ML")
+### Maximum likelihood
+println("### ML")
 println(mx)
 println("log-likelihood: $(loglikelihood(mx))")
-# Bayes
-println("Bayes")
+# y ~ 1 + x + z
+# 
+# Coefficients:
+# ──────────────────────────────────────────────────────────────────────────
+#                  Coef.  Std. Error      z  Pr(>|z|)   Lower 95%  Upper 95%
+# ──────────────────────────────────────────────────────────────────────────
+# (Intercept)  -0.738985    0.533878  -1.38    0.1663  -1.78537     0.307397
+# x             1.37353     0.716591   1.92    0.0553  -0.0309611   2.77803
+# z            -0.128342    0.887125  -0.14    0.8850  -1.86707     1.61039
+# ──────────────────────────────────────────────────────────────────────────
+# log-likelihood: -94.22718845397189
+
+
+### Bayes
+println("### Bayes")
 println(reso)
-# Bayes maximum a posteriori
-println("MCMC based MAP")
+#  Row │ nm       mean       std        median    lower2_5  upper97_5  autocor_1  autocor_5    length 
+#      │ Any      Any        Any        Any       Any       Any        Any        Any          Any    
+# ─────┼──────────────────────────────────────────────────────────────────────────────────────────────
+#    1 │ logpost  -126.129   -125.8     -129.371  -124.729  1.23374    0.177401   0.0070398    9000.0
+#    2 │ b_0      -0.797824  -0.783011  -1.88873  0.224845  0.537868   0.131137   0.00813639   9000.0
+#    3 │ b_1      1.46708    1.42894    0.127659  2.93323   0.720429   0.140184   -0.00184611  9000.0
+#    4 │ b_2      -0.171078  -0.17837   -1.95199  1.57014   0.892912   0.156661   -0.0126926   9000.0
+
+
+### Bayes maximum a posteriori
+println("### MCMC based MAP")
 println(res[argmax(res.logpost),:])
+#   Row │ iter     logpost   b_0        b_1      b_2       
+#       │ Float64  Float64   Float64    Float64  Float64   
+# ──────┼──────────────────────────────────────────────────
+#  8312 │ 93111.0  -124.616  -0.723186  1.35561  -0.106778
 
 
-plot(res.b_1)
-density(res.b_1)
+# uncomment for plotting
+#using StatsPlots
+#plot(res.b_1)
+#density(res.b_1)
