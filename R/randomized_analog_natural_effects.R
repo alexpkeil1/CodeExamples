@@ -16,25 +16,28 @@ dgm <- function(n){
   # stochastic potential mediators
   m0 <- rnorm(n, -1 + 0 + 0.5*z, 1)
   m1 <- rnorm(n, -1 + 1 + 0.5*z, 1)
-  m2 <- rnorm(n, -1 - 2 + 0.5*z, 1)
+  m2 <- rnorm(n, -1 + 2 + 0.5*z, 1)
+  #m0 <- pnorm(rnorm(n, -1 + 0 + 0.5*z, 1))
+  #m1 <- pnorm(rnorm(n, -1 + 1 + 0.5*z, 1))
+  #m2 <- pnorm(rnorm(n, -1 - 2 + 0.5*z, 1))
   m <- ifelse(x==1, m1, ifelse(x==2, m2, m0))
   y00 <- rnorm(n,0,2)
   permute_idx = sample(n)
-  yx1m1t <- y00 + 1 + m1
-  yx2m2t <- y00 + 2 + 2*m2
-  yx0m0t <- y00 + 0 + m0
+  yx0m0t <- y00 + 0 +  -1*m0
+  yx1m1t <- y00 + 1 +  -1*m1
+  yx2m2t <- y00 + 2 +  -1*m2
   # true randomized analogue effects
-  yx1m1 <- y00 + 1 + m1[permute_idx]
-  yx2m2 <- y00 + 2 + 2*m2[permute_idx]
-  yx0m0 <- y00 + 0 + m0[permute_idx]
+  yx0m0 <- y00 + 0 +  -1*m0[permute_idx]
+  yx1m1 <- y00 + 1 +  -1*m1[permute_idx]
+  yx2m2 <- y00 + 2 +  -1*m2[permute_idx]
   #
-  yx1m0 <- y00 + 1 + m0[permute_idx]
-  yx2m0 <- y00 + 2 + 2*m0[permute_idx]
-  yx0m2 <- y00 + 0 + m2[permute_idx]
-  yx0m1 <- y00 + 0 + m1[permute_idx]
+  yx1m0 <- y00 + 1  + -1*m0[permute_idx]
+  yx2m0 <- y00 + 2  + -1*m0[permute_idx]
+  yx0m1 <- y00 + 0  + -1*m1[permute_idx]
+  yx0m2 <- y00 + 0  + -1*m2[permute_idx]
   y <- ifelse(x==1, yx1m1t, ifelse(x==2, yx2m2t, yx0m0t))
   data.frame(
-    z,x,m,y,m0,m1, yx1m1, yx2m2, yx2m0, yx1m0,yx0m2, yx0m1,yx0m0
+    z,x,m,y,m0,m1,m2, yx0m0t, yx1m1t, yx2m2t, yx1m1, yx2m2, yx2m0, yx1m0,yx0m2, yx0m1,yx0m0
   )
 }
 
