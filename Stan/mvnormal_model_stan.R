@@ -19,6 +19,68 @@ dgm <- function(n,b1=c(1,1,0), b2=c(0,0,1)){
   data.frame(x1=X1,y1=Y1, x2=X2, y2=Y2)
 }
 
+############################################################
+# Bayesian multivariate model using Stan
+############################################################
+  
+# rstan functions use a list as input for data and constants
+standata = list() # data
+standata$N = nrow(datl) # constants
+standata$X = datl[,x1col] # just ignore that there are two predictor matrixes (which are identical here)
+standata$Y = datl[,c(y1col,y2col)] # multivariate outcome
+standata$J = ncol(standata$X)
+standata$K = ncol(standata$Y)
+
+##############
+#  stan code for multivariate linear model
+##############
+
+stanmod <- "
+data {
+  int<lower=0> N;          // sample size
+  int<lower=0> K;          // number of outcomes
+  int<lower=0> J;          // design matrix columns
+  matrix[N,K] Y;               // estimated treatment effects
+  matrix [N,J] X;               // estimated treatment effects
+}
+parameters {
+  cov_matrix[K] Sigma; // ensures positive semi-definite
+  matrix[K,J] beta;
+}
+model {
+  //Sigma ~ inv_wishart(2.0, [[2, 0], [0, 2]]); // use vague prior by commenting this line
+  for(k in 1:K){
+    beta[k,1] ~ normal(0,1000); // vague prior on intercepts
+    for(j in 2:J){
+      beta[k,j] ~ normal(0,1); // shrinkage prior
+    }
+  }
+  matrix [N,K] mu;
+  for(i in 1:N){
+    for(k in 1:K){
+      mu[i,k] =  X[i,] * beta[k,]';                 // beta is structured this way just so that estimates are printed in an order that matches estimating equation approach
+    }
+    target += multi_normal_lpdf(Y[i,] | mu[i,], Sigma); 
+  }
+}
+generated quantities{
+}
+"
+
+# compile model
+compiledfit <- stan(model_code=stanmod, data = standata, chains=1, iter=10)
+
+# run more samples, check for convergence
+postsamples = stan(fit=compiledfit, iter=10000, data = standata)
+
+# all parameter estimates
+print(postsamples)   # Bayesian fit
+
+
+
+############################################################
+# Estimating equation approach (Seemingly unrelated regression)
+############################################################
 
 
 
@@ -88,62 +150,9 @@ ibread = solve(A)
 (fullcovmat = ibread %*% B %*% t(ibread))
 
 
-############################################################
-# Bayesian multivariate model using Stan
-############################################################
-  
-# rstan functions use a list as input for data and constants
-standata = list() # data
-standata$N = nrow(datl) # constants
-standata$X = datl[,x1col] # just ignore that there are two predictor matrixes (which are identical here)
-standata$Y = datl[,c(y1col,y2col)] # multivariate outcome
-standata$J = ncol(standata$X)
-standata$K = ncol(standata$Y)
-
-##############
-#  stan code for multivariate linear model
-##############
-
-stanmod <- "
-data {
-  int<lower=0> N;          // sample size
-  int<lower=0> K;          // number of outcomes
-  int<lower=0> J;          // design matrix columns
-  matrix[N,K] Y;               // estimated treatment effects
-  matrix [N,J] X;               // estimated treatment effects
-}
-parameters {
-  cov_matrix[K] Sigma; // ensures positive semi-definite
-  matrix[K,J] beta;
-}
-model {
-  //Sigma ~ inv_wishart(2.0, [[2, 0], [0, 2]]); // use vague prior by commenting this line
-  for(k in 1:K){
-    beta[k,1] ~ normal(0,1000); // vague prior on intercepts
-    for(j in 2:J){
-      beta[k,j] ~ normal(0,1); // shrinkage prior
-    }
-  }
-  matrix [N,K] mu;
-  for(i in 1:N){
-    for(k in 1:K){
-      mu[i,k] =  X[i,] * beta[k,]';                 // beta is structured this way just so that estimates are printed in an order that matches estimating equation approach
-    }
-    target += multi_normal_lpdf(Y[i,] | mu[i,], Sigma); 
-  }
-}
-generated quantities{
-}
-"
-
-# compile model
-compiledfit <- stan(model_code=stanmod, data = standata, chains=1, iter=10)
-
-# run more samples, check for convergence
-postsamples = stan(fit=compiledfit, iter=10000, data = standata)
-
-# all parameter estimates
-print(postsamples)   # Bayesian fit
+#############
+# Comparisons
+#############
 
 
 # model coefficient parameter estimates
