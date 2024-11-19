@@ -39,7 +39,7 @@ mod_adj = glm(y ~ x + z, data = data, family=binomial())
   
 
 ############################################################
-# Bayesian linear model using Stan
+# Bayesian logistic model using Stan
 ############################################################
   
 # rstan functions use a list as input for data and constants
@@ -89,43 +89,3 @@ postsamples = stan(fit=compiledfit, iter=1000, data = standata)
 print(postsamples)   # Bayesian fit
 summary(mod_adj)  # MLE
 
-
-##############
-# alternative stan code for linear model
-# includes extra trouble-shooting steps
-##############
-
-stanmod2 <- "
-data {
-  int<lower=0> N;          // sample size
-  int<lower=0> J;          // design matrix columns
-  real y[N];               // estimated treatment effects
-  matrix [N,J]X;               // estimated treatment effects
-}
-parameters {
-  real<lower=0> sigma;
-  vector[J] beta;
-}
-model {
-  sigma ~ cauchy(0, 10); // half cauchy prior on scale
-  beta[1] ~ normal(0,1000); // vague prior on intercept
-  beta[2:J] ~ normal(0,1); // shrinkage prior
-  vector[N] mu = X * beta;
-  print(\"\\n beta[x] =\",beta[1]);
-  print(\"log density before y =\", target());
-  y ~ normal(mu, sigma); // 'vectorized' form
-  print(\"log density after y =\", target());
-}
-generated quantities{
-//  real ypred = [1, 0.1, 0.9] * beta; // predicting y from a test exposure, x = 0.1, z = 0.9
-}
-"
-
-# compile model, get debug messages
-compiledfit2 <- stan(model_code=stanmod2, data = standata, chains=1, iter=10)
-
-# run more samples, check for convergence
-postsamples2 = stan(fit=compiledfit2, iter=1000, data = standata)
-
-print(postsamples2)   # Bayesian fit
-summary(mod_adj)  # MLE
