@@ -1,3 +1,6 @@
+# Imputation of log-normally distributed variables
+
+
 # multiple imputation based on Lubin et al (2004)
 # as well as a generalization to more standard multiple imputation schemes
 # this can also be implemented within the `qgcomp' package via the
