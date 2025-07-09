@@ -8,18 +8,6 @@
 
 library(survival)
 
-# first, generate data subject to LOD for the outcome
-dgm <- function(n){
-  x <- rnorm(n,0,1)
-  y <- rnorm(n,x,1)
-  lod <- 0
-  yobs = y
-  lodidx = which(yobs<lod)
-  yobs[lodidx] <- NA
-  ylod <- yobs
-  ylod[lodidx] <- lod
-  data.frame(x,y,yobs,ylod, lod)
-}
 
 # function to do a single imputation of new values below the LOD
 # note: y is assumed lognormally distributed
@@ -56,33 +44,59 @@ draw_tobit <- function(y, lod, x=NULL){
 
 
 # Example 
-numimputations = 100
-samplesize = 500
+# first, generate data subject to LOD for the outcome
+dgm <- function(n){
+  x <- rnorm(n,0,1)
+  y <- rnorm(n,x,1)
+  lod <- 0
+  yobs = y
+  lodidx = which(yobs<lod)
+  yobs[lodidx] <- NA
+  ylod <- yobs
+  ylod[lodidx] <- lod
+  data.frame(x,y,yobs,ylod, lod)
+}
+dat = dgm(500)
 
-dat = dgm(samplesize)
+M = 100
+
 
 
 # Lubin's approach (no covariates used in imputation): will be biased if using imputed values in a regression
-margimps = lapply(1:numimputations, function(i) log(draw_tobit(exp(dat$yobs), exp(dat$lod), x=NULL)))
-margfits <- lapply(margimps, function(vals) lm(yimp ~ x, data = data.frame(yimp=vals, x=dat$x)))
+margimps = lapply(1:M, function(i) 
+  # create M imputed datasets
+  log(draw_tobit(exp(dat$yobs), exp(dat$lod), x=NULL))
+  )
+margfits <- lapply(margimps, function(vals) 
+  # apply linear regression to every imputed sample
+  lm(yimp ~ x, data = data.frame(yimp=vals, x=dat$x))
+  )
+# extract coefficients and variances
 coef_margimps = sapply(margfits, function(x) coef(x)[2])
 var_margimps = sapply(margfits, function(x) vcov(x)[2,2])
-# Rubin's rules
+# Rubin's rules for estimate and standard error
 marg_est = mean(coef_margimps)
-marg_se = sqrt(var(coef_margimps)*(numimputations+1)/(numimputations-1) + mean(var_margimps))
+marg_se = sqrt(var(coef_margimps)*(M+1)/(M-1) + mean(var_margimps))
 
 
 
 
 
 # Conditional approach (covariates used in imputation): helps avoid null bias
-condimps = lapply(1:numimputations, function(i) log(draw_tobit(exp(dat$yobs), exp(dat$lod), x=dat$x)))
-condfits <- lapply(condimps, function(vals) lm(yimp ~ x, data = data.frame(yimp=vals, x=dat$x)))
+condimps = lapply(1:M, function(i) 
+  # create M imputed datasets
+  log(draw_tobit(exp(dat$yobs), exp(dat$lod), x=dat$x))
+  )
+condfits <- lapply(condimps, function(vals) 
+  # apply linear regression to every imputed sample
+  lm(yimp ~ x, data = data.frame(yimp=vals, x=dat$x))
+  )
+# extract coefficients and variances
 coef_condimps = sapply(condfits, function(x) coef(x)[2])
 var_condimps = sapply(condfits, function(x) vcov(x)[2,2])
-# Rubin's rules
+# Rubin's rules for estimate and standard error
 cond_est = mean(coef_condimps)
-cond_se = sqrt(var(coef_condimps)*(numimputations+1)/(numimputations-1) + mean(var_condimps))
+cond_se = sqrt(var(coef_condimps)*(M+1)/(M-1) + mean(var_condimps))
 
 
 
@@ -100,9 +114,17 @@ bias_cond
 marg_se
 cond_se
 
+# estimate with true values
+trfit = lm(y ~ x, data = dat)
+true_est = coef(trfit)[2]
+true_se =  sqrt(vcov(trfit)[2,2])
+
+
 # estimate and 95% confidence intervals
 marg_est + qnorm(c(0.5, 0.025, 0.975))*marg_se
 cond_est + qnorm(c(0.5, 0.025, 0.975))*cond_se
+true_est + qnorm(c(0.5, 0.025, 0.975))*true_se
+
 
 
 
