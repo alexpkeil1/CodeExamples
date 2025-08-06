@@ -100,8 +100,8 @@ print.simpow <- function(x,...){
 # exposure with a log normal distribution with parameters -2, 0.75 (mean, sd of the log-transformed values)
 # maximum exposure of 10
 # 1000 iterations (more will give better accuracy, but take longer)
-
-future::plan(strategy=multisession) # set parallel processing, see help for "plan" function for details
+# set parallel processing, see help for "plan" function for details - this version uses half of the available workers
+future::plan(strategy=multisession, workers = availableCores(constraints = "connections-16")/2) 
 message("Number of parallel processes: ", nbrOfWorkers())
 pow_1 = power_logistic(trueor = 1.1, ncases=5000, ncontrols = 500000, logmean=-2, logsd=0.75, xmax = 10, iterations = 1000, verbose=TRUE)
 pow_1
